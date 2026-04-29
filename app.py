@@ -4,6 +4,7 @@ from PyPDF2 import PdfReader
 import matplotlib.pyplot as plt
 import pandas as pd
 
+# ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="MediSync AI", layout="wide")
 
 # ---------- STYLE ----------
@@ -26,8 +27,8 @@ page = st.sidebar.radio("Navigation", ["Dashboard", "Upload & Analyze", "History
 def extract_text(file):
     reader = PdfReader(file)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text()
+    for p in reader.pages:
+        text += (p.extract_text() or "") + "\n"
     return text
 
 def extract_values(text):
@@ -40,14 +41,20 @@ def extract_values(text):
     for k, p in patterns.items():
         m = re.findall(p, text, re.IGNORECASE)
         if m:
-            data[k] = float(m[0])
+            try:
+                data[k] = float(m[0])
+            except:
+                pass
     return data
 
 def risk(values):
     score = 0
-    if values.get("Hemoglobin", 100) < 12: score += 1
-    if values.get("Sugar", 0) > 120: score += 1
-    if values.get("Cholesterol", 0) > 200: score += 1
+    if values.get("Hemoglobin", 100) < 12:
+        score += 1
+    if values.get("Sugar", 0) > 120:
+        score += 1
+    if values.get("Cholesterol", 0) > 200:
+        score += 1
     return ["Low 🟢", "Moderate 🟡", "High 🔴"][min(score, 2)]
 
 def plot(values):
@@ -92,10 +99,15 @@ elif page == "Upload & Analyze":
         st.warning(risk(values))
 
         st.subheader("📈 Visualization")
-        st.pyplot(plot(values))
+        if values:
+            st.pyplot(plot(values))
 
         st.subheader("📋 Summary")
-        st.success(". ".join(text.split(".")[:5]))
+        sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 20]
+        if sentences:
+            st.success(". ".join(sentences[:5]))
+        else:
+            st.info("No summary available.")
 
         with st.expander("📄 Full Report"):
             st.write(text)
@@ -114,4 +126,4 @@ elif page == "History":
 # ---------- FOOTER ----------
 st.markdown("---")
 st.warning("⚠️ Educational use only. Not a medical diagnosis tool.")
-st.caption("MediSync AI | Clinical Intelligence Platform")ence System")
+st.caption("MediSync AI | Clinical Intelligence Platform")
