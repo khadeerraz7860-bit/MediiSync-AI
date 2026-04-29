@@ -1,21 +1,29 @@
 import streamlit as st
+import pandas as pd
 import re
 from PyPDF2 import PdfReader
-import matplotlib.pyplot as plt
-import pandas as pd
+from transformers import pipeline
+import os
 
-# ---------- PAGE ----------
 st.set_page_config(page_title="MediSync AI", layout="wide")
 
-# ---------- UI ----------
-st.title("🏥 MediSync AI - Healthcare Intelligence Platform")
-st.caption("AI-powered Clinical Decision Support System")
+st.title("🏥 MediSync AI - Smart Medical Record System")
 
-# ---------- SESSION ----------
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "chat" not in st.session_state:
-    st.session_state.chat = []
+# ---------- LOAD MODEL ----------
+@st.cache_resource
+def load_model():
+    return pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
+
+qa_model = load_model()
+
+# ---------- FILE ----------
+DATA_FILE = "patient_data.csv"
+
+# ---------- LOAD DATA ----------
+if os.path.exists(DATA_FILE):
+    df = pd.read_csv(DATA_FILE)
+else:
+    df = pd.DataFrame(columns=["Date", "Hemoglobin", "Sugar", "Cholesterol"])
 
 # ---------- FUNCTIONS ----------
 def extract_text(file):
@@ -35,78 +43,51 @@ def extract_values(text):
     for key, pattern in patterns.items():
         match = re.findall(pattern, text, re.IGNORECASE)
         if match:
-            try:
-                data[key] = float(match[0])
-            except:
-                pass
+            data[key] = float(match[0])
     return data
 
-def risk(values):
-    score = 0
-    if values.get("Hemoglobin", 100) < 12:
-        score += 1
-    if values.get("Sugar", 0) > 120:
-        score += 1
-    if values.get("Cholesterol", 0) > 200:
-        score += 1
-    return ["Low 🟢", "Moderate 🟡", "High 🔴"][min(score, 2)]
+def split_text(text, size=400):
+    words = text.split()
+    return [" ".join(words[i:i+size]) for i in range(0, len(words), size)]
 
-def predict(values):
-    result = []
-    if values.get("Sugar", 0) > 140:
-        result.append("⚠️ Risk of Diabetes")
-    if values.get("Cholesterol", 0) > 220:
-        result.append("⚠️ Risk of Heart Disease")
-    if values.get("Hemoglobin", 100) < 11:
-        result.append("⚠️ Risk of Anemia")
-    return result if result else ["No major risk detected"]
+def find_best_chunk(chunks, question):
+    question_words = question.lower().split()
+    best_chunk = ""
+    best_score = 0
 
-def suggestions(values):
-    tips = []
-    if values.get("Sugar", 0) > 120:
-        tips.append("Reduce sugar intake and exercise daily")
-    if values.get("Cholesterol", 0) > 200:
-        tips.append("Avoid oily food and increase fiber intake")
-    if values.get("Hemoglobin", 100) < 12:
-        tips.append("Eat iron-rich foods like spinach and dates")
-    return tips if tips else ["Maintain healthy lifestyle"]
+    for chunk in chunks:
+        score = sum(1 for word in question_words if word in chunk.lower())
+        if score > best_score:
+            best_score = score
+            best_chunk = chunk
 
-def plot(values):
-    fig, ax = plt.subplots()
-    ax.bar(values.keys(), values.values())
-    ax.set_title("Health Metrics")
-    return fig
+    return best_chunk
 
-def answer_question(q, text, values):
-    q = q.lower()
-
-    if "risk" in q:
-        return f"Risk level is {risk(values)}"
-    if "summary" in q:
-        return ". ".join(text.split(".")[:3])
-    if "sugar" in q:
-        return f"Sugar level is {values.get('Sugar', 'Not found')}"
-    if "hemoglobin" in q:
-        return f"Hemoglobin is {values.get('Hemoglobin', 'Not found')}"
-    if "cholesterol" in q:
-        return f"Cholesterol is {values.get('Cholesterol', 'Not found')}"
-
-    return "I couldn't find that information."
-
-# ---------- MAIN ----------
-uploaded = st.file_uploader("📄 Upload Medical Report (PDF)", type="pdf")
+# ---------- UPLOAD ----------
+uploaded = st.file_uploader("📄 Upload Medical Report", type="pdf")
 
 if uploaded:
     text = extract_text(uploaded)
     values = extract_values(text)
+    chunks = split_text(text)
 
     if values:
-        st.session_state.history.append(values)
+        new_row = {
+            "Date": pd.Timestamp.now().strftime("%Y-%m-%d"),
+            "Hemoglobin": values.get("Hemoglobin"),
+            "Sugar": values.get("Sugar"),
+            "Cholesterol": values.get("Cholesterol")
+        }
+
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_csv(DATA_FILE, index=False)
+
+        st.success("✅ Report saved successfully!")
 
     st.markdown("---")
 
-    # 📊 METRICS
-    st.subheader("📊 Patient Metrics")
+    # ---------- METRICS ----------
+    st.subheader("📊 Extracted Values")
     cols = st.columns(3)
 
     keys = ["Hemoglobin", "Sugar", "Cholesterol"]
@@ -114,59 +95,56 @@ if uploaded:
         if key in values:
             cols[i].metric(key, values[key])
 
-    # 🧠 RISK
-    st.subheader("🧠 Risk Level")
-    st.warning(risk(values))
-
-    # 🧬 PREDICTION
-    st.subheader("🧬 Disease Prediction")
-    for item in predict(values):
-        st.error(item)
-
-    # 💡 SUGGESTIONS
-    st.subheader("💡 Health Suggestions")
-    for tip in suggestions(values):
-        st.info(tip)
-
-    # 📈 GRAPH
-    st.subheader("📈 Visualization")
-    if values:
-        st.pyplot(plot(values))
-
-    # 📊 TREND
-    if len(st.session_state.history) > 1:
-        st.subheader("📊 Trend Analysis")
-        df = pd.DataFrame(st.session_state.history)
-        st.line_chart(df)
-
-    # 📋 SUMMARY
-    st.subheader("📋 Summary")
-    sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 20]
-    if sentences:
-        st.success(". ".join(sentences[:5]))
-    else:
-        st.info("No summary available.")
-
-    # 💬 CHAT
-    st.subheader("💬 Ask about report")
+    # ---------- ASK ----------
+    st.subheader("💬 Ask About Report")
     question = st.text_input("Ask a question")
 
     if question:
-        answer = answer_question(question, text, values)
-        st.session_state.chat.append(("You", question))
-        st.session_state.chat.append(("AI", answer))
+        context = find_best_chunk(chunks, question)
 
-    for sender, msg in st.session_state.chat:
-        st.write(f"**{sender}:** {msg}")
+        try:
+            result = qa_model(question=question, context=context)
+            answer = result["answer"]
+        except:
+            answer = "Couldn't find answer."
 
-    # 📄 FULL TEXT
-    with st.expander("📄 View Full Report"):
-        st.write(text)
+        st.write("### ✅ Answer")
+        st.write(answer)
 
-else:
-    st.info("Upload a PDF to start analysis")
+# ---------- SEARCH ----------
+st.markdown("---")
+st.subheader("🔍 Search Parameter History")
+
+query = st.text_input("Type: sugar / hemoglobin / cholesterol")
+
+if query:
+    col_map = {
+        "sugar": "Sugar",
+        "hemoglobin": "Hemoglobin",
+        "cholesterol": "Cholesterol"
+    }
+
+    col = col_map.get(query.lower())
+
+    if col and col in df.columns:
+        st.write(f"### 📊 {col} History")
+
+        st.dataframe(df[["Date", col]])
+        st.line_chart(df.set_index("Date")[col])
+
+        if not df[col].dropna().empty:
+            latest = df[col].dropna().iloc[-1]
+            st.metric("Latest Value", latest)
+
+    else:
+        st.warning("Invalid input")
+
+# ---------- ALL DATA ----------
+st.markdown("---")
+st.subheader("📋 All Patient Records")
+st.dataframe(df)
 
 # ---------- FOOTER ----------
 st.markdown("---")
-st.warning("⚠️ This system is for educational purposes only.")
-st.caption("MediSync AI | Clinical Intelligence Platform")
+st.warning("⚠️ Educational use only")
+st.caption("MediSync AI | Smart Healthcare System")
