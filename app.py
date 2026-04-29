@@ -4,31 +4,23 @@ from PyPDF2 import PdfReader
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# ---------- PAGE CONFIG ----------
+# ---------- PAGE ----------
 st.set_page_config(page_title="MediSync AI", layout="wide")
 
-# ---------- STYLE ----------
-st.markdown("""
-<style>
-body { background-color: #0f172a; }
-h1, h2, h3 { color: #38bdf8; }
-</style>
-""", unsafe_allow_html=True)
+# ---------- UI ----------
+st.title("🏥 MediSync AI - Healthcare Intelligence Platform")
+st.caption("AI-powered Clinical Decision Support System")
 
 # ---------- SESSION ----------
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# ---------- SIDEBAR ----------
-st.sidebar.title("🏥 MediSync AI")
-page = st.sidebar.radio("Navigation", ["Dashboard", "Upload & Analyze", "History"])
-
 # ---------- FUNCTIONS ----------
 def extract_text(file):
     reader = PdfReader(file)
     text = ""
-    for p in reader.pages:
-        text += (p.extract_text() or "") + "\n"
+    for page in reader.pages:
+        text += (page.extract_text() or "") + "\n"
     return text
 
 def extract_values(text):
@@ -38,11 +30,11 @@ def extract_values(text):
         "Cholesterol": r"Cholesterol.*?(\d+)"
     }
     data = {}
-    for k, p in patterns.items():
-        m = re.findall(p, text, re.IGNORECASE)
-        if m:
+    for key, pattern in patterns.items():
+        match = re.findall(pattern, text, re.IGNORECASE)
+        if match:
             try:
-                data[k] = float(m[0])
+                data[key] = float(match[0])
             except:
                 pass
     return data
@@ -63,67 +55,59 @@ def plot(values):
     ax.set_title("Health Metrics")
     return fig
 
-# ---------- DASHBOARD ----------
-if page == "Dashboard":
-    st.title("📊 Clinical Dashboard")
+# ---------- MAIN ----------
+uploaded = st.file_uploader("📄 Upload Medical Report (PDF)", type="pdf")
 
-    if st.session_state.history:
+if uploaded:
+    text = extract_text(uploaded)
+    values = extract_values(text)
+
+    if values:
+        st.session_state.history.append(values)
+
+    st.markdown("---")
+
+    # 📊 METRICS
+    st.subheader("📊 Patient Metrics")
+    cols = st.columns(3)
+
+    keys = ["Hemoglobin", "Sugar", "Cholesterol"]
+    for i, key in enumerate(keys):
+        if key in values:
+            cols[i].metric(key, values[key])
+
+    # 🧠 RISK
+    st.subheader("🧠 Risk Level")
+    st.warning(risk(values))
+
+    # 📈 GRAPH
+    st.subheader("📈 Visualization")
+    if values:
+        st.pyplot(plot(values))
+
+    # 📊 TREND
+    if len(st.session_state.history) > 1:
+        st.subheader("📊 Trend Analysis")
         df = pd.DataFrame(st.session_state.history)
         st.line_chart(df)
-        st.success("Patient trends visualized")
+
+    # 📋 SUMMARY
+    st.subheader("📋 Summary")
+    sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 20]
+    if sentences:
+        st.success(". ".join(sentences[:5]))
     else:
-        st.info("No data yet. Upload reports to see dashboard.")
+        st.info("No summary available.")
 
-# ---------- ANALYSIS ----------
-elif page == "Upload & Analyze":
-    st.title("📄 Upload & Analyze Report")
+    # 📄 FULL TEXT
+    with st.expander("📄 View Full Report"):
+        st.write(text)
 
-    uploaded = st.file_uploader("Upload PDF", type="pdf")
-
-    if uploaded:
-        text = extract_text(uploaded)
-        values = extract_values(text)
-
-        if values:
-            st.session_state.history.append(values)
-
-        st.subheader("📊 Metrics")
-        cols = st.columns(3)
-
-        keys = ["Hemoglobin", "Sugar", "Cholesterol"]
-        for i, key in enumerate(keys):
-            if key in values:
-                cols[i].metric(key, values[key])
-
-        st.subheader("🧠 Risk Level")
-        st.warning(risk(values))
-
-        st.subheader("📈 Visualization")
-        if values:
-            st.pyplot(plot(values))
-
-        st.subheader("📋 Summary")
-        sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 20]
-        if sentences:
-            st.success(". ".join(sentences[:5]))
-        else:
-            st.info("No summary available.")
-
-        with st.expander("📄 Full Report"):
-            st.write(text)
-
-# ---------- HISTORY ----------
-elif page == "History":
-    st.title("📊 Report History")
-
-    if st.session_state.history:
-        df = pd.DataFrame(st.session_state.history)
-        st.dataframe(df)
-        st.line_chart(df)
-    else:
-        st.info("No history available.")
+else:
+    st.info("Upload a PDF to start analysis")
 
 # ---------- FOOTER ----------
 st.markdown("---")
-st.warning("⚠️ Educational use only. Not a medical diagnosis tool.")
+st.warning("⚠️ This system is for educational purposes only.")
 st.caption("MediSync AI | Clinical Intelligence Platform")
+
