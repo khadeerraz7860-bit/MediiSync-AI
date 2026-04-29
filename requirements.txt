@@ -1,10 +1,2 @@
 streamlit
-langchain
-langchain-community
-langchain-text-splitters
-pypdf
-chromadb
-transformers
-sentence-transformers
-torch
-torchvision
+PyPDF2
