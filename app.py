@@ -14,6 +14,8 @@ st.caption("AI-powered Clinical Decision Support System")
 # ---------- SESSION ----------
 if "history" not in st.session_state:
     st.session_state.history = []
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
 # ---------- FUNCTIONS ----------
 def extract_text(file):
@@ -49,11 +51,47 @@ def risk(values):
         score += 1
     return ["Low 🟢", "Moderate 🟡", "High 🔴"][min(score, 2)]
 
+def predict(values):
+    result = []
+    if values.get("Sugar", 0) > 140:
+        result.append("⚠️ Risk of Diabetes")
+    if values.get("Cholesterol", 0) > 220:
+        result.append("⚠️ Risk of Heart Disease")
+    if values.get("Hemoglobin", 100) < 11:
+        result.append("⚠️ Risk of Anemia")
+    return result if result else ["No major risk detected"]
+
+def suggestions(values):
+    tips = []
+    if values.get("Sugar", 0) > 120:
+        tips.append("Reduce sugar intake and exercise daily")
+    if values.get("Cholesterol", 0) > 200:
+        tips.append("Avoid oily food and increase fiber intake")
+    if values.get("Hemoglobin", 100) < 12:
+        tips.append("Eat iron-rich foods like spinach and dates")
+    return tips if tips else ["Maintain healthy lifestyle"]
+
 def plot(values):
     fig, ax = plt.subplots()
     ax.bar(values.keys(), values.values())
     ax.set_title("Health Metrics")
     return fig
+
+def answer_question(q, text, values):
+    q = q.lower()
+
+    if "risk" in q:
+        return f"Risk level is {risk(values)}"
+    if "summary" in q:
+        return ". ".join(text.split(".")[:3])
+    if "sugar" in q:
+        return f"Sugar level is {values.get('Sugar', 'Not found')}"
+    if "hemoglobin" in q:
+        return f"Hemoglobin is {values.get('Hemoglobin', 'Not found')}"
+    if "cholesterol" in q:
+        return f"Cholesterol is {values.get('Cholesterol', 'Not found')}"
+
+    return "I couldn't find that information."
 
 # ---------- MAIN ----------
 uploaded = st.file_uploader("📄 Upload Medical Report (PDF)", type="pdf")
@@ -80,6 +118,16 @@ if uploaded:
     st.subheader("🧠 Risk Level")
     st.warning(risk(values))
 
+    # 🧬 PREDICTION
+    st.subheader("🧬 Disease Prediction")
+    for item in predict(values):
+        st.error(item)
+
+    # 💡 SUGGESTIONS
+    st.subheader("💡 Health Suggestions")
+    for tip in suggestions(values):
+        st.info(tip)
+
     # 📈 GRAPH
     st.subheader("📈 Visualization")
     if values:
@@ -99,6 +147,18 @@ if uploaded:
     else:
         st.info("No summary available.")
 
+    # 💬 CHAT
+    st.subheader("💬 Ask about report")
+    question = st.text_input("Ask a question")
+
+    if question:
+        answer = answer_question(question, text, values)
+        st.session_state.chat.append(("You", question))
+        st.session_state.chat.append(("AI", answer))
+
+    for sender, msg in st.session_state.chat:
+        st.write(f"**{sender}:** {msg}")
+
     # 📄 FULL TEXT
     with st.expander("📄 View Full Report"):
         st.write(text)
@@ -110,4 +170,3 @@ else:
 st.markdown("---")
 st.warning("⚠️ This system is for educational purposes only.")
 st.caption("MediSync AI | Clinical Intelligence Platform")
-
