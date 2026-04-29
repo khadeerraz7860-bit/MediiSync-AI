@@ -12,11 +12,11 @@ from langchain.prompts import PromptTemplate
 st.set_page_config(page_title="MediSync AI", page_icon="🏥", layout="wide")
 
 st.markdown("""
-    <style>
-    .main { background-color: #0F172A; color: white; }
-    .stButton>button { background-color: #2DD4BF; color: black; border-radius: 8px; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+.main { background-color: #0F172A; color: white; }
+.stButton>button { background-color: #2DD4BF; color: black; border-radius: 8px; font-weight: bold; }
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🏥 MediSync AI: Agentic Healthcare RAG")
 
@@ -36,18 +36,18 @@ st.warning("⚠️ This AI is for educational purposes only. Consult a doctor.")
 
 if uploaded_file:
 
-    # Save file
+    # Save uploaded file
     with open("temp_report.pdf", "wb") as f:
         f.write(uploaded_file.getbuffer())
 
     st.sidebar.success("✅ File uploaded")
 
-    # --- LOAD PDF (WITH ERROR HANDLING) ---
+    # --- LOAD PDF ---
     try:
         loader = PyPDFLoader("temp_report.pdf")
         documents = loader.load()
     except Exception:
-        st.error("❌ Invalid or corrupted PDF. Please upload a proper PDF file.")
+        st.error("❌ Invalid or corrupted PDF. Please upload a proper PDF.")
         st.stop()
 
     # --- SPLIT TEXT ---
@@ -57,29 +57,25 @@ if uploaded_file:
     )
     texts = text_splitter.split_documents(documents)
 
-    # --- VECTOR DB (NO CACHE NOW) ---
-    def create_vector_db(texts):
-        embeddings = OpenAIEmbeddings()
-        db = Chroma.from_documents(texts, embeddings)
-        return db
-
-    vector_db = create_vector_db(texts)
+    # --- VECTOR DB (NO CACHE) ---
+    embeddings = OpenAIEmbeddings()
+    vector_db = Chroma.from_documents(texts, embeddings)
 
     # --- PROMPT ---
     prompt_template = """
-    You are a medical assistant AI.
+You are a medical assistant AI.
 
-    Use ONLY the provided context.
-    If unsure, say "I don't know".
+Use ONLY the given context.
+If unsure, say "I don't know".
 
-    Context:
-    {context}
+Context:
+{context}
 
-    Question:
-    {question}
+Question:
+{question}
 
-    Answer in simple terms:
-    """
+Answer in simple terms:
+"""
 
     PROMPT = PromptTemplate(
         template=prompt_template,
@@ -94,22 +90,22 @@ if uploaded_file:
         chain_type_kwargs={"prompt": PROMPT}
     )
 
-    # --- CHAT ---
+    # --- QUERY ---
     st.subheader("🔍 Analyze Report")
-    query = st.text_input("Ask a question:")
+    query = st.text_input("Ask a question about the report:")
 
     if query:
         with st.spinner("Analyzing..."):
-            response = qa_chain.invoke(query)
+            result = qa_chain.invoke(query)
 
         st.success("✅ Analysis Complete")
-        st.write(response["result"])
+        st.write(result["result"])
 
         with st.expander("📄 View Extracted Text"):
             st.write(texts[:3])
 
 else:
-    st.info("👈 Upload a PDF to begin")
+    st.info("👈 Upload a PDF file from the sidebar")
 
 st.markdown("---")
 st.caption("MediSync AI | Final Year Project 2026")
