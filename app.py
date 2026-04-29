@@ -1,111 +1,63 @@
 import streamlit as st
-import os
-
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import CharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+from langchain_community.llms import HuggingFacePipeline
+
+from transformers import pipeline
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="MediSync AI", page_icon="🏥", layout="wide")
+st.set_page_config(page_title="MediSync AI", page_icon="🏥")
+st.title("🏥 MediSync AI (FREE VERSION)")
 
-st.markdown("""
-<style>
-.main { background-color: #0F172A; color: white; }
-.stButton>button { background-color: #2DD4BF; color: black; border-radius: 8px; font-weight: bold; }
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🏥 MediSync AI: Agentic Healthcare RAG")
-
-# --- API KEY ---
-api_key = os.getenv("OPENAI_API_KEY")
-
-if not api_key:
-    st.error("❌ API key not found. Add it in Streamlit Secrets.")
-    st.stop()
-
-# --- SIDEBAR ---
-st.sidebar.title("Upload Report")
-uploaded_file = st.sidebar.file_uploader("Upload Patient Report (PDF)", type="pdf")
-
-# --- WARNING ---
-st.warning("⚠️ This AI is for educational purposes only. Consult a doctor.")
+# --- FILE UPLOAD ---
+uploaded_file = st.file_uploader("Upload Patient Report (PDF)", type="pdf")
 
 if uploaded_file:
-
-    # Save uploaded file
-    with open("temp_report.pdf", "wb") as f:
+    with open("temp.pdf", "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    st.sidebar.success("✅ File uploaded")
+    st.success("PDF uploaded!")
 
     # --- LOAD PDF ---
-    try:
-        loader = PyPDFLoader("temp_report.pdf")
-        documents = loader.load()
-    except Exception:
-        st.error("❌ Invalid or corrupted PDF. Please upload a proper PDF.")
-        st.stop()
+    loader = PyPDFLoader("temp.pdf")
+    documents = loader.load()
 
     # --- SPLIT TEXT ---
-    text_splitter = CharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100
-    )
+    text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     texts = text_splitter.split_documents(documents)
 
-    # --- VECTOR DB (NO CACHE) ---
-    embeddings = OpenAIEmbeddings()
-    vector_db = Chroma.from_documents(texts, embeddings)
-
-    # --- PROMPT ---
-    prompt_template = """
-You are a medical assistant AI.
-
-Use ONLY the given context.
-If unsure, say "I don't know".
-
-Context:
-{context}
-
-Question:
-{question}
-
-Answer in simple terms:
-"""
-
-    PROMPT = PromptTemplate(
-        template=prompt_template,
-        input_variables=["context", "question"]
+    # --- FREE EMBEDDINGS ---
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 
-    # --- QA SYSTEM ---
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),
-        chain_type="stuff",
-        retriever=vector_db.as_retriever(),
-        chain_type_kwargs={"prompt": PROMPT}
+    vector_db = Chroma.from_documents(texts, embeddings)
+
+    # --- FREE LLM ---
+    pipe = pipeline(
+        "text2text-generation",
+        model="google/flan-t5-base",
+        max_length=512
+    )
+
+    llm = HuggingFacePipeline(pipeline=pipe)
+
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=vector_db.as_retriever()
     )
 
     # --- QUERY ---
-    st.subheader("🔍 Analyze Report")
-    query = st.text_input("Ask a question about the report:")
+    query = st.text_input("Ask about report:")
 
     if query:
-        with st.spinner("Analyzing..."):
-            result = qa_chain.invoke(query)
-
-        st.success("✅ Analysis Complete")
-        st.write(result["result"])
-
-        with st.expander("📄 View Extracted Text"):
-            st.write(texts[:3])
+        with st.spinner("Thinking..."):
+            result = qa.run(query)
+            st.write("### AI Answer:")
+            st.write(result)
 
 else:
-    st.info("👈 Upload a PDF file from the sidebar")
-
-st.markdown("---")
-st.caption("MediSync AI | Final Year Project 2026")
+    st.info("Upload a PDF to start")
