@@ -7,3 +7,4 @@ chromadb
 transformers
 sentence-transformers
 torch
+torchvision
