@@ -20,7 +20,7 @@ st.markdown("""
 
 st.title("🏥 MediSync AI: Agentic Healthcare RAG")
 
-# --- SECURITY (API KEY FROM SECRETS) ---
+# --- API KEY ---
 api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
@@ -32,18 +32,23 @@ st.sidebar.title("Upload Report")
 uploaded_file = st.sidebar.file_uploader("Upload Patient Report (PDF)", type="pdf")
 
 # --- WARNING ---
-st.warning("⚠️ This AI is for educational purposes only. Consult a doctor for medical advice.")
+st.warning("⚠️ This AI is for educational purposes only. Consult a doctor.")
 
 if uploaded_file:
 
+    # Save file
     with open("temp_report.pdf", "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    st.sidebar.success("✅ File uploaded successfully")
+    st.sidebar.success("✅ File uploaded")
 
-    # --- LOAD PDF ---
-    loader = PyPDFLoader("temp_report.pdf")
-    documents = loader.load()
+    # --- LOAD PDF (WITH ERROR HANDLING) ---
+    try:
+        loader = PyPDFLoader("temp_report.pdf")
+        documents = loader.load()
+    except Exception:
+        st.error("❌ Invalid or corrupted PDF. Please upload a proper PDF file.")
+        st.stop()
 
     # --- SPLIT TEXT ---
     text_splitter = CharacterTextSplitter(
@@ -52,8 +57,7 @@ if uploaded_file:
     )
     texts = text_splitter.split_documents(documents)
 
-    # --- VECTOR DB (CACHED) ---
-    @st.cache_resource
+    # --- VECTOR DB (NO CACHE NOW) ---
     def create_vector_db(texts):
         embeddings = OpenAIEmbeddings()
         db = Chroma.from_documents(texts, embeddings)
@@ -61,7 +65,7 @@ if uploaded_file:
 
     vector_db = create_vector_db(texts)
 
-    # --- CUSTOM PROMPT ---
+    # --- PROMPT ---
     prompt_template = """
     You are a medical assistant AI.
 
@@ -74,7 +78,7 @@ if uploaded_file:
     Question:
     {question}
 
-    Answer in simple and clear terms:
+    Answer in simple terms:
     """
 
     PROMPT = PromptTemplate(
@@ -90,24 +94,22 @@ if uploaded_file:
         chain_type_kwargs={"prompt": PROMPT}
     )
 
-    # --- USER INPUT ---
+    # --- CHAT ---
     st.subheader("🔍 Analyze Report")
-    user_query = st.text_input("Ask a question about the report:")
+    query = st.text_input("Ask a question:")
 
-    if user_query:
+    if query:
         with st.spinner("Analyzing..."):
-            response = qa_chain.invoke(user_query)
+            response = qa_chain.invoke(query)
 
         st.success("✅ Analysis Complete")
-        st.markdown("### 🧠 AI Response")
         st.write(response["result"])
 
-        # Optional: Show extracted text
-        with st.expander("📄 View Extracted Content"):
+        with st.expander("📄 View Extracted Text"):
             st.write(texts[:3])
 
 else:
-    st.info("👈 Upload a PDF file from the sidebar")
+    st.info("👈 Upload a PDF to begin")
 
 st.markdown("---")
 st.caption("MediSync AI | Final Year Project 2026")
